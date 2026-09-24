@@ -1,113 +1,153 @@
 <?php
-include "connect.php";
 
-/* RECEIVE DATA FROM play.php
---------------------------*/
+    include "connect.php";
 
-$email = filter_input(INPUT_POST, "email", FILTER_VALIDATE_EMAIL);
-$score = filter_input(INPUT_POST, "score", FILTER_VALIDATE_INT);
+    /*Get game result*/
+    $playerId = filter_input(INPUT_POST, "player_id", FILTER_VALIDATE_INT);
+    $score = filter_input(INPUT_POST, "score", FILTER_VALIDATE_INT);
 
-if (!$email || !$score) {
-    echo "<h2>Error: Missing email or score not recieved.</h2>";
-    echo "<a href='index.php'>Back to login</a>";
-    exit;
-}
+    if (!$playerId || !$score) {
+        echo "<h2>Error: Invalid player or score.</h2>";
+        echo "<a href='index.php'>Back to home</a>";
+        exit;
+    }
 
-$stmt = $dbh->prepare("SELECT email FROM players WHERE email = ?");
-$stmt->execute([$email]);
-$user = $stmt->fetch();
 
-if (!$user) {
-    echo "User not found.";
-    exit;
-}
+    /*Verify the player exists in the database*/
+    $stmt = $dbh->prepare(
+        "SELECT username FROM players WHERE player_id = ?"
+    );
 
-//$userid = $user['userid'];
+    $stmt->execute([$playerId]);
 
-/* INSERT THE RESULT
---------------------------*/
+    $player = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$stmt = $dbh->prepare("INSERT INTO results (email, score, datePlayed) VALUES (?, ?, NOW())");
-$stmt->execute([$email, $score]);
+    if (!$player) {
+        echo "<h2>Error: Player not found.</h2>";
+        echo "<a href='index.php'>Back to home</a>";
+        exit;
+    }
 
-/* GET USER STATS
---------------------------*/
+    $username = $player["username"];
 
-$stmt = $dbh->prepare("
-    SELECT 
-        COUNT(*) AS gamesPlayed,
-        MIN(score) AS bestScore,
-        AVG(score) AS averageScore
-    FROM results
-    WHERE email = ?
-");
-$stmt->execute([$email]);
-$userStats = $stmt->fetch();
 
-/* GET TOP 5 PLAYERS
---------------------------*/
+    /*Save game result to the database*/
+    $stmt = $dbh->prepare(
+        "INSERT INTO results (player_id, score)
+        VALUES (?, ?)"
+    );
 
-$stmt = $dbh->query("
-    SELECT email, MIN(score) AS bestScore
-    FROM results
-    GROUP BY email
-    ORDER BY bestScore ASC
-    LIMIT 5
-");
-$topUsers = $stmt->fetchAll();
+    $stmt->execute([$playerId, $score]);
+
+
+    /*Get current players stats*/
+    $stmt = $dbh->prepare("
+        SELECT
+            COUNT(*) AS games_played,
+            MIN(score) AS best_score,
+            AVG(score) AS average_score
+        FROM results
+        WHERE player_id = ?
+    ");
+
+    $stmt->execute([$playerId]);
+
+    $userStats = $stmt->fetch(PDO::FETCH_ASSOC);
+
+
+    /*Top 5 players*/
+    $stmt = $dbh->query("
+        SELECT
+            p.username,
+            MIN(r.score) AS best_score
+        FROM players p
+        JOIN results r
+            ON p.player_id = r.player_id
+        GROUP BY p.player_id, p.username
+        ORDER BY best_score ASC
+        LIMIT 5
+    ");
+
+    $topUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 ?>
 
 <!doctype html>
+
 <html>
+
 <head>
     <meta charset="utf-8">
-    <title>Leaderboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Fruit Flip Leaderboard</title>
+
     <link rel="stylesheet" href="css/style.css">
 </head>
 
 <body>
 
-<h1>Leaderboard</h1>
+    <h1>Fruit Flip Leaderboard</h1>
 
-<!-- USER STATS -->
-<h2>Your Results</h2>
+    <h2>Your Results</h2>
 
-<p><strong>Email:</strong> <?php echo htmlspecialchars($email); ?></p>
-<p><strong>Games Played:</strong> <?php echo $userStats['gamesPlayed']; ?></p>
-<p><strong>Best Score:</strong> <?php echo $userStats['bestScore']; ?> score</p>
+    <p>
+        <strong>Player:</strong>
+        <?php echo htmlspecialchars($username); ?>
+    </p>
 
-<hr>
+    <p>
+        <strong>Games Played:</strong>
+        <?php echo $userStats["games_played"]; ?>
+    </p>
 
-<!-- TOP 5 TABLE -->
-<h2>Top 5 Players</h2>
+    <p>
+        <strong>Best Score:</strong>
+        <?php echo $userStats["best_score"]; ?> moves
+    </p>
 
-<!--<table border="1" cellpadding="8">-->
-<table>
-    <tr>
-        <th>Rank</th>
-        <th>Email</th>
-        <th>Best Score (score)</th>
-    </tr>
+    <p>
+        <strong>Average Score:</strong>
+        <?php echo number_format($userStats["average_score"], 1); ?> moves
+    </p>
 
-    <?php
-    $rank = 1;
 
-    foreach ($topUsers as $row) {
-        echo "<tr>";
-        echo "<td>$rank</td>";
-        echo "<td>" . htmlspecialchars($row['email']) . "</td>";
-        echo "<td>" . $row['bestScore'] . "</td>";
-        echo "</tr>";
-        $rank++;
-    }
-    ?>
-</table>
+    <h2>Top 5 Players</h2>
 
-<br>
+    <table>
 
-<a href="play.php?email=<?php echo urlencode($email); ?>" class="gameButton">Play Again</a>
-<br><br>
-<a href="index.php" class="gameButton">Log Out</a>
+        <tr>
+            <th>Rank</th>
+            <th>Player</th>
+            <th>Best Score</th>
+        </tr>
 
+        <?php
+            $rank = 1;
+
+            foreach ($topUsers as $row) {
+
+                echo "<tr>";
+                echo "<td>" . $rank . "</td>";
+                echo "<td>" .
+                    htmlspecialchars($row["username"]) .
+                    "</td>";
+                echo "<td>" .
+                    $row["best_score"] .
+                    " moves</td>";
+                echo "</tr>";
+                $rank++;
+            }
+        ?>
+
+    </table>
+
+    <br>
+
+    <a href="play.php?player_id=<?php echo urlencode($playerId); ?>" class="gameButton"> Play Again </a>
+
+    <br><br>
+
+    <a href="index.php" class="gameButton"> Change Player</a>
 </body>
 </html>

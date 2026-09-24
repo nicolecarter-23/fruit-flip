@@ -1,14 +1,30 @@
 <?php
+    include "connect.php";
 
-$email = filter_input(INPUT_GET, "email", FILTER_VALIDATE_EMAIL);
+    $playerId = filter_input(INPUT_GET, "player_id", FILTER_VALIDATE_INT);
 
-if (!$email) {
-    echo "<h2>Error: No email received.</h2>";
-    echo "<a href='index.php'>Go back</a>";
-    exit;
-}
+    if (!$playerId) {
+        echo "<h2>Error: Invalid player.</h2>";
+        echo "<a href='index.php'>Go back</a>";
+        exit;
+    }
 
+    // Get player information from the database
+    $stmt = $dbh->prepare(
+        "SELECT username FROM players WHERE player_id = ?"
+    );
 
+    $stmt->execute([$playerId]);
+
+    $player = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$player) {
+        echo "<h2>Error: Player not found.</h2>";
+        echo "<a href='index.php'>Go back</a>";
+        exit;
+    }
+
+    $username = $player["username"];
 ?>
 
 <!doctype html>
@@ -20,7 +36,7 @@ if (!$email) {
     </head>
 
     <body>
-        <p>Logged in as: <?php echo htmlspecialchars($email); ?></p>
+        <p>Playing as: <?php echo htmlspecialchars($username); ?></p>
 
         <div id="splashScreen">
             <canvas id="splashCanvas" width="480" height="1200"></canvas>
@@ -111,13 +127,16 @@ if (!$email) {
                     <p>Your Moves: <span id="finalMoves">0</span></p>
 
                     <form id="resultForm" method="POST" action="leaderboard.php">
-                        <input type="hidden" name="email" value="<?php echo htmlspecialchars($email); ?>">
+
+                        <input type="hidden" name="player_id" value="<?php echo htmlspecialchars($playerId); ?>">
+
                         <input type="hidden" name="score" id="movesInput">
 
-                        <button id="quitButtonEnd">Quit</button>
+                        <button id="quitButtonEnd">
+                            View Leaderboard
+                        </button>
+
                     </form>
-                    <!--<p>Best Score: <span id="bestMoves">0</span></p>-->
-                    <!--<button id="playAgain">Play Again</button>-->
             </div>
         </div>
     </body>
